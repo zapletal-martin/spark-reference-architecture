@@ -56,13 +56,22 @@ TODO
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \section{Introduction}
 
-TODO
+\subsection{Spark components}
+This reference architecture uses Spark Core, Spark Streaming and Spark SQL.
+
+\subsection{Non Spark components}
+TODO: COMPLETE
+
+Apart from Apache Spark this reference architecture makes use of Cassandra, Kafka, S3, Elastic Search.
+
+\subsection{Resource manager}
+For automated deployment, infrastructure and operations and resource management Mesosphere Datacenter Operating System (CS/OS) is used.
 
 \section{Reference implementation}
 
-This architecture was used in a financial transaction processing system. The system continuously receives data from either a streaming integration point or files, processes and transforms the data, validates them against known records and finally stores the results.
+This architecture was used in a financial transaction processing system. The system receives input data from files at defined times and continuously receives data from a streaming integration point, processes and transforms the data, validates them against known records and finally stores the results.
 
-The application receives multiple types of inputs. One are files from other financial institution containing a set of transactions. The other one is integration with other systems through Apache Kafka. The records are processed, validated against known data stored in Cassandra database, transformed and finally stored in Cassandra and relevant information sent to integration points with other internal systems. The application has strict requirements for uptime, availability, consistency, data integrity, scalability and cost optimisation while ideally using OS technologies. For those reasons Mesosphere DSOS was chosen for infrastructure automation, cluster and resource management.
+The application receives multiple types of inputs. One are files from other financial institution uploaded at defined times to an integration point and containing a set of transactions. The other one is integration with other systems through Apache Kafka. The records are processed, validated against known data stored in Cassandra database, transformed and finally stored in Cassandra and relevant information sent to integration points with other internal systems. In addition generation of reports from the stored result data is required. The application has strict requirements for uptime, availability, consistency, data integrity, scalability and cost optimisation while ideally using OS technologies. For those reasons Mesosphere DSOS was chosen for infrastructure automation, cluster and resource management.
 
 \section{Main components}
 
@@ -72,13 +81,13 @@ The main components in this architecture are data sources (file source and Apach
 	\begin{center}
 		\caption{Components}
 		\label{fig:components}
-		\includegraphics[width=7cm,keepaspectratio]{architecture-diagram.png}
+		\includegraphics[width=8cm,keepaspectratio]{architecture-diagram.png}
 	\end{center}
 \end{figure}
 
 \subsection{Data sources}
-In this reference architecture two different data sources are used. An input directory is used for historical reasons as an integration point between financial institutions. A file in a known format is uploaded to the directory in defined intervals. Apache Spark file stream source can monitor a directory and process each new file as it is added to the directory.
-Apache Kafka is used for integration with other internal systems. Kafka is a distributed log often used for integration for its scalability, reliability, durability, replayability and other attributes. Spark provides a Kafka input stream and its direct version as options to stream data from Kafka.
+In this reference architecture two different data sources are used. An input directory is used for historical reasons as an integration point between financial institutions. A file in a known format is uploaded to the directory in defined intervals. Apache Spark file stream source can monitor a directory and process each new file as it is added to the directory. For simplicity of deployment, version upgrades, elasticity, ability to assign very different resources to different types of processed files and financial savings batch processing capability of Apache Spark was preferred.
+Apache Kafka is used for integration with other internal systems. Kafka is a distributed log often used for integration for its scalability, reliability, durability, replayability and other attributes. Spark Streaming provides a Kafka input stream and its direct version as options to stream data from Kafka.
 
 \subsection{Stream processing}
 After ingesting data from the sources they need to go through a processing pipeline with guarantees satisfying the requirements. The requirements and guarantees provided by Spark are in detail described in next section.
@@ -105,7 +114,7 @@ Enterprise systems are often large distributed application consisting of many se
 	\begin{center}
 		\caption{Streaming data platform}
 		\label{fig:streamingDataPlatform}
-		\includegraphics[width=7cm,keepaspectratio]{streaming-data-platform.png}
+		\includegraphics[width=8cm,keepaspectratio]{streaming-data-platform.png}
 	\end{center}
 \end{figure}
 
@@ -119,122 +128,79 @@ Apache Spark Streaming module fits very well into such architecture with reliabl
 \section{Requirements and Spark's guarantees}
 
 \subsection{Data consistency}
+The application requires strong consistency guarantees (not in strong serializability database transaction sense sense). The data must always be processed and the result correctly updated. All records from an incoming file or Kafka connector must be processed. 
 
 \subsection{Delivery guarantees}
+The application also requires exactly once delivery guarantees. Each element read from either file or Kafka must be delivered exactly once. In distributed environment this is not trivial, because of unbounded delays, lost messages, failed nodes and asynchronous partial failures. In general case durable persistence on both sides of the pipeline is required, because if a message was acknowledged before processing by the receiver, it could result in loss and if it is acknowledged after processing the receiver can receive duplicates (after retry). Exactly once delivery guarantee problem can be reduced to at least once delivery guarantee by using unique identifiers, idempotence or simplified by using probabilistic data structures to filter duplicate data.
+
+Spark provides exactly once delivery guarantee with additional solutions to non replayable sources (replicating the processing pipeline, storing received data immediately into a durable store), parallel recovering from failures optimisations etc.
+
+TODO: COMPLETE http://www.cakesolutions.net/teamblogs/spark-streaming-tricky-parts
 
 \subsection{Fault tolerance}
+To fulfil the consistency and delivery requirements fault tolerance is a must. Spark handles node failures, lost data and other common failures in large scale distributed deployments automatically abstracting all that from the application developer.
+
+TODO: COMPLETE (parallel recovery)
+Spark Driver program in client mode does not provide resiliency, but in cluster mode 
+
+It is possible to have a hot spare master 
+
+Worker nodes launch and monitors job?s executors. When worker fails, all its child process are also gone. Then the worker process is automatically relaunched, processes restarted and tasks reran. When just the Executor process fails, then it is automatically relaunched by the Worker process and any tasks that were in flight are rescheduled. Stream receivers follows the same resiliency characteristics as 
+executors.
+
+\begin{figure}[hb]
+	\begin{center}
+		\caption{Spark Streaming Failure Impact}
+		\label{fig:sparkStreamingFailureImpact}
+		\includegraphics[width=8cm,keepaspectratio]{spark-streaming-failure-impact.png}
+	\end{center}
+\end{figure}
+
+Failure recovery has impact on the performance ... as displayed on figure~\ref{fig:sparkStreamingFailureImpact}.
 
 \subsection{Order}
 Ordering
 Event time processing
 
+TODO: COMPLETE
+
 \subsection{Scalability}
+The batch part of the pipeline has string scalability guarantees. Different inputs are received at different times and have very different profile of core/ram usage and other resource requirements. Keeping all the resources in the cluster available at all times would be very expensive. The ability to scale the size of the cluster up and down elastically is very important. The pattern could look 
+
+\begin{table}[h]
+\caption{Processing times requirements}
+\label{tbl:processing-times-requirements}
+\begin{center}
+  \begin{tabular}{ | l | p{3cm} | }
+    \hline
+    Between 08:00 and 10:00 & run a defined number of ingestion jobs and a defined number of other transaction ingestion jobs.  \\ \hline
+    Between 10:00 and 12:00 & execute ingestion jobs ? as many as the current infrastructure will support. \\ \hline
+    At 12:00 & execute a transaction reporting extract using all cluster resorces \\ \hline
+    When the above has finished & run housekeeping jobs in parallel ? sharing the cluster resources to prepare for next run \\
+    \hline
+  \end{tabular}
+\end{center}
+\end{table}
+
+Spark in cooperation with DC/OS provides capabilities to efficiently utilise provisioned resources. Using e.g. a public cloud infrastructure and utilising the pricing strategy it is possible to achieve significant financial savings.
+ 
+ 
+TODO: COMPLETE https://docs.google.com/document/d/1jdPtcDyRXWheIQ4MLJpXeK4IoxtUrcThou6LmkUaN28/edit
+The stream processing pipeline scaling is 
 Elasticity
 Dynamic
 Dynamic changes to pipeline
 
 \subsection{Latency and throughput}
-
+\subsection{No downtime deployment}
+\subsection{Monitoring, logging, operations}
 \subsection{Serialisation and versioning}
+\subsection{Development tools and visualisation}
 
 \section{Alternatives and competitors}
 
 \section{Conclusion}
 
-
-
-
-
-
-
-
-
-
-
-The sensors shown here as consumer-grade wearables perform only the basic hardware interaction: there is no pre-processing of the recorded data. The system accepts accelerometer, gyroscope, heart rate and---where available---data from strain gauges in smart clothes. The mobile application performs the real-time processing of the inputs, displays the next exercise the user should perform (allowing the user to change the suggestion by simply walking to a station for a different exercise, or by beginning a different exercise). The mobile application also prompts the user to confirm correct labels for the recorded data. \emph{This is the key component in the entire system: the frictionless user experience gives the system very accurate labels on very clean data}.
-
-The mobile submits the entire session data (the sensor data, matching labels and latest user behaviour models) in a single request to the Akka \cite{akka} cluster---a CQRS/ES \cite{cqrs-es} microservice implementation. The Akka cluster stores its events and snapshots in a journal, implemented by the Apache Cassandra \cite{apache-cassandra} database. Alongside the events and snapshots, which are opaque to non-Akka systems, the \texttt{exercise} microservice saves the sensor data and the matching labels in a properly formed tabular structure. This structure allows the Apache Spark \cite{apache-spark} cluster to be used for typical big data tasks.
-
-The Spark cluster Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec magna purus, gravida et molestie a, bibendum et libero. Maecenas sed egestas erat. Suspendisse ullamcorper posuere erat, et finibus turpis tempor varius. Aenean tempus tellus sit amet arcu interdum, eu ornare nulla egestas. Nulla facilisi. Sed imperdiet urna et convallis consequat. Nullam nec ex eu leo auctor interdum eu id nunc. Fusce fermentum tempor gravida. Morbi sit amet augue a erat condimentum vulputate. Proin sed mattis lorem, viverra condimentum metus. Suspendisse luctus aliquam placerat. Donec sit amet mollis massa. Aliquam luctus dui in imperdiet accumsan. Nam nisi ligula, dapibus id interdum in, dictum efficitur ligula. Donec bibendum mollis convallis. Fusce maximus non orci quis laoreet.
-
-The models are implemented in Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec magna purus, gravida et molestie a, bibendum et libero. Maecenas sed egestas erat. Suspendisse ullamcorper posuere erat, et finibus turpis tempor varius. Aenean tempus tellus sit amet arcu interdum, eu ornare nulla egestas. Nulla facilisi. Sed imperdiet urna et convallis consequat. Nullam nec ex eu leo auctor interdum eu id nunc. Fusce fermentum tempor gravida. Morbi sit amet augue a erat condimentum vulputate. Proin sed mattis lorem, viverra condimentum metus. Suspendisse luctus aliquam placerat. Donec sit amet mollis massa. Aliquam luctus dui in imperdiet accumsan. Nam nisi ligula, dapibus id interdum in, dictum efficitur ligula. Donec bibendum mollis convallis. Fusce maximus non orci quis laoreet.
-
-\subsection{Mobile application}
-
-The sensors send the data in \SI{1}{\second} batches; the application on the mobile resamples the sampling rate to \SI{50}\hertz. (Accelerometer and gyroscope typically sample at this rate, heart rate and the strain gauges in smart clothes can be up-sampled to \SI{50}{\hertz} easily.) The mobile application ingests the data from the sensors and, together with a statistical model of the user's short-term behaviour, attempts to identify the movement. The models in the mobile application can make successful predictions of sequence of exercises in a session and the properties of each exercise (i.e. weight, number of repetitions, duration, intensity). The model used to predict sequence of exercise sessions and exercises within a session is a Markov chain \cite{markov-chain-exercise}. This approach allows the application to deal with the reality of exercise in a public gym, where the station for the next suggested exercise might not be available. The Markov chain, together with a bio-mechanical model of the main muscle groups, gives the users the flexibility to achieve their workout targets even in crowded gyms. The sequence of exercise predictions for one particular exercise sessions are illustrated on \autoref{fig:model-sequence}.
-
-\begin{figure}[h]
-	\begin{center}
-		\caption{Exercise sequence model}
-		\label{fig:model-sequence}
-		\includegraphics[width=7cm,keepaspectratio]{ri-model-sequence.png}
-	\end{center}
-\end{figure}
-
-The numbers in \autoref{fig:model-sequence} represent the count of transitions taken; hence it is possible to calculate the probability of transition from any given state. The state names represent the exercise labels, in real application, they are the real exercise names. The mobile application can either receive the chain when the user selects one of the pre-defined exercise programmes, or it can construct the chain from empty if the user choses to start his or her custom workout. This gives the application an intuitive feel; its suggestions are what the users usually do. Finally, the information in the chain allows the system to identify the most popular sequences of exercises, to identify exercises that the users do not like; more interestingly, the system can use the information in the chain to identify sequence of exercises that leads to the best improvement. (At this point, we do not define what the improvement is: in some applications, it may be weight loss; in other applications, it may be greatest mobility range improvement; and many others.)
-
-To make the next-exercise prediction more accurate, the mobile application uses fined-grained location services. The location services are implemented using bluetooth beacons. The beacons operate in the iBeacon mode \cite{ibeacon}; each beacon in this mode transmits its identifier, a major, and minor values. The mobile application sets up continuous scanning of a major value which identifies exercise equipment, receiving notifications of beacons and their minor values as they come into range. The mobile application then filters the exercise states keeping only those that are associated with a particular area. (Viz \autoref{fig:model-sequence+location}.)
-
-\begin{figure}[h]
-	\begin{center}
-		\caption{Exercise sequence model}
-		\label{fig:model-sequence+location}
-		\includegraphics[width=7cm,keepaspectratio]{ri-model-sequence+location.png}
-	\end{center}
-\end{figure}
-
-With the fine-grained location data available, the application is \emph{expecting} to see a movement that precedes exercises A or C. We call this movement the \emph{setup movement}. The setup movement classifier is a multi-layer perceptron, which takes \SI{1}\second of sensor input and produces probabilities classes that represent the setup movement for groups of exercises. The architecture of the MLP is driven by the sensor data as its inputs; for example, accelerometer-only MLP has 150 inputs (50 samples of the acceleration vector), the subsequent layer has 45 rectifier units, then 40 rectifier units, ending up with 32 softmax units, where 32 is the number of recognised setup movements. The architecture of the MLP for a fully-wired human has 1200 inputs, 250 rectifier units, 100 rectifier units, ending up with 32 softmax units. It is important to measure and optimise the power requirements for the computation; on iOS, we took advantage of the vDSP and veclib frameworks, which offer optimised vector operations. The MLP classes are not the exercises themselves, but the setup movements; one setup movement can map to multiple exercises. To provide accurate prediction of the exercise about to be started, the mobile application takes into account the expected exercise (given the user's typical behaviour), and the fine-grained location data. The performance of the exercise prediction for accelerometer on the user's wrist is shown in \autoref{tbl:setup-movement-performance-accelerometer}; the performance of the exercise prediction rises significantly in fully-wired human (viz \autoref{tbl:setup-movement-performance-all}).
-
-\begin{table}[h]
-\caption{Exercise prediction performance (accelerometer)}
-\label{tbl:setup-movement-performance-accelerometer}
-\begin{center}
-\begin{tabular}{|l||m{1cm}|m{1cm}|m{1cm}|m{1cm}|}
-\hline            			& Accuracy & Precision & Recall & F1 \\
-\hline No context 			& !!       & !!        & !!     & !! \\
-\hline Behaviour  			& !!       & !!        & !!     & !! \\ 
-\hline Behaviour + Location & !!       & !!        & !!     & !! \\
-\hline
-\end{tabular}
-\end{center}
-\end{table}
-
-\begin{table}[h]
-\caption{Exercise prediction performance (all sensors)}
-\label{tbl:setup-movement-performance-all}
-\begin{center}
-\begin{tabular}{|l||m{1cm}|m{1cm}|m{1cm}|m{1cm}|}
-\hline            			& Accuracy & Precision & Recall & F1 \\
-\hline No context 			& !!       & !!        & !!     & !! \\
-\hline Behaviour  			& !!       & !!        & !!     & !! \\ 
-\hline Behaviour + Location & !!       & !!        & !!     & !! \\
-\hline
-\end{tabular}
-\end{center}
-\end{table}
-
-\begin{figure}[hb]
-	\begin{center}
-		\caption{Exercise sequence model}
-		\label{fig:model-sss}
-		%\includegraphics[width=7cm,keepaspectratio]{fully-wired.svg}
-	\end{center}
-\end{figure}
-
-
-If the user only wears an accelerometer on his or her wrist, then the setup movement for barbell bench press is the same as the setup movement for dumbbell bench press. In 94 \% of our test user base of 451, the next exercise prediction refined by the fine-grained location eliminated ambiguity of setup movement detection in all their exercises. \autoref{fig:model-sequence+setup} shows the final decision state of the mobile application.
-
-\begin{figure}[hb]
-	\begin{center}
-		\caption{Exercise sequence model}
-		\label{fig:model-sequence+setup}
-		\includegraphics[width=7cm,keepaspectratio]{ri-model-sequence+setup.png}
-	\end{center}
-\end{figure}
-
-\section{Summary}
-
-TODO
 
 \addtolength{\textheight}{-12cm}  % This command serves to balance the column lengths
                                   % on the last page of the document manually. It shortens
@@ -244,15 +210,8 @@ TODO
                                   % sure that you do not shorten the textheight too much.
 
 \begin{thebibliography}{99}
-
-\bibitem{markov-chain-exercise} F. Oo, Q. Uux. Bar. 2016.
-\bibitem{akka} Akka.
-\bibitem{cqrs-es} CQRS/ES.
 \bibitem{apache-cassandra} Apache Cassandra.
 \bibitem{apache-spark} Apache Spark.
-\bibitem{ibeacon} iBeacon.
-
 \end{thebibliography}
-
 
 \end{document}
