@@ -83,7 +83,7 @@ The main components in this architecture are data sources (file source and Apach
 \end{figure}
 
 \subsection{Data sources}
-In this reference architecture two different data sources are used. An input directory is used for historical reasons as an integration point between financial institutions. A file in a known format is uploaded to the directory in defined intervals. Apache Spark file stream source can monitor a directory and process each new file as it is added to the directory. For simplicity of deployment, version upgrades, elasticity, ability to assign very different resources to different types of processed files and financial savings batch processing capability of Apache Spark was preferred.
+In this reference architecture two different data sources are used. An input directory is used for historical reasons as an integration point between financial institutions. A file in a known format is uploaded to the directory in defined intervals. Apache Spark file stream source can monitor a directory and process each new file as it is added to the directory. Batch processing capability of Apache Spark was preferred in this case for reasons explained later in section about cluster scheduling and resource management.
 Apache Kafka is used for integration with other internal systems. Kafka is a distributed log often used for integration for its scalability, reliability, durability, replayability and other attributes. Spark Streaming provides a Kafka input stream and its direct version as options to stream data from Kafka.
 
 \subsection{Stream processing}
@@ -162,7 +162,9 @@ Event time processing
 TODO: COMPLETE
 
 \subsection{Scalability}
-The batch part of the pipeline has string scalability guarantees. Different inputs are received at different times and have very different profile of core/ram usage and other resource requirements. Keeping all the resources in the cluster available at all times would be very expensive. The ability to scale the size of the cluster up and down elastically is very important. The pattern could look 
+The batch part of the pipeline has strict scalability guarantees. Granularly, on demand submitted batch processes were preferred for their simplicity of deployment, version upgrades, elasticity, ability to assign very different resources to different types of processed files and financial savings. Streaming and a long running repeatedly polling batch process were also considered, but were rejected due to worse granularity, utilisation and flexibility of the solution.
+
+Different inputs are received at different times and have very different profile of core/ram usage and other resource requirements. Keeping all the resources in the cluster available at all times would be very expensive. The ability to scale the size of the cluster up and down elastically is very important. The pattern could look 
 
 \begin{table}[h]
 \caption{Processing times requirements}
@@ -184,9 +186,32 @@ Spark in cooperation with DC/OS provides capabilities to efficiently utilise pro
  
 TODO: COMPLETE https://docs.google.com/document/d/1jdPtcDyRXWheIQ4MLJpXeK4IoxtUrcThou6LmkUaN28/edit
 The stream processing pipeline scaling is 
+
+\subsection{Cluster and resource management}
 Elasticity
 Dynamic
 Dynamic changes to pipeline
+
+Some of the questions that need to be resolved with regards to resource management are
+
+\begin{itemize}
+  \item How to schedule allocation of more resources of the total available for Spark in specific time window during the day? Or react to the number of requests? (fully utilise existing resources in the stack)
+  
+  \item How to set priorities based on the Spark job type and based on time?
+  
+  \item How to react to the change in the number of available servers during the day, so it can allocate more resources for Spark when the total available servers increased, and shrink that when they decrease? (Reactively Scale to demand - Both up and Down) 
+  
+  \item What metrics does it provide for current tasks and finished tasks? (Monitoring of Spark jobs)
+
+  \item Which Spark job approach is more suitable  (Long Running (Streaming) / Job per file / More Granular jobs) 
+    
+\end{itemize}
+
+\subsubsection{Job submission}
+Spark jobs can be submitted using spark-submit script, programmatically directly from code or using job server which provides more flexibility and simple handling  of many common scenarios.
+
+\subsubsection{Cluster management and resource scheduler}
+Own, YARN, Mesos, Standalone
 
 \subsection{Latency and throughput}
 \subsection{No downtime deployment}
