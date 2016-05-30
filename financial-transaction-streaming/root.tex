@@ -47,9 +47,9 @@ separator symbol =; ,
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 \begin{abstract}
+This document describes distributed, large data volume stream processing architecture that was used in a real life production financial transaction processing system. The system receives input data from files at defined times and at the same time continuously ingests data from a streaming integration point, processes and transforms the data as a stream, validates them against known records and finally stores the results.
 
-TODO
-
+The document describes architecture, technology choices, explanation of system requirements such as data consistency, integrity, performance, fault tolerance or availability and how the selected technologies and their interoperability fulfil the requirements, focusing on Apache Spark. Finally scenarios where selected technologies and architecture can not be applied due to specific limitations are discussed.
 \end{abstract}
 
 
@@ -60,16 +60,13 @@ TODO
 This reference architecture uses Spark Core, Spark Streaming and Spark SQL.
 
 \subsection{Non Spark components}
-TODO: COMPLETE
 
-Apart from Apache Spark this reference architecture makes use of Cassandra, Kafka, S3, Elastic Search.
+Apart from Apache Spark this reference architecture makes use of Cassandra, Kafka, Filesystem, S3 and Elasticsearch.
 
 \subsection{Resource manager}
 For automated deployment, infrastructure and operations and resource management Mesosphere Datacenter Operating System (CS/OS) is used.
 
 \section{Reference implementation}
-
-This architecture was used in a financial transaction processing system. The system receives input data from files at defined times and continuously receives data from a streaming integration point, processes and transforms the data, validates them against known records and finally stores the results.
 
 The application receives multiple types of inputs. One are files from other financial institution uploaded at defined times to an integration point and containing a set of transactions. The other one is integration with other systems through Apache Kafka. The records are processed, validated against known data stored in Cassandra database, transformed and finally stored in Cassandra and relevant information sent to integration points with other internal systems. In addition generation of reports from the stored result data is required. The application has strict requirements for uptime, availability, consistency, data integrity, scalability and cost optimisation while ideally using OS technologies. For those reasons Mesosphere DSOS was chosen for infrastructure automation, cluster and resource management.
 
