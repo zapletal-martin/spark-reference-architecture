@@ -137,13 +137,12 @@ TODO: COMPLETE http://www.cakesolutions.net/teamblogs/spark-streaming-tricky-par
 \subsection{Fault tolerance}
 To fulfil the consistency and delivery requirements fault tolerance is a must. Spark handles node failures, lost data and other common failures in large scale distributed deployments automatically abstracting all that from the application developer.
 
-TODO: COMPLETE (parallel recovery)
-Spark Driver program in client mode does not provide resiliency, but in cluster mode 
+Fault tolerance guarantees are discussed in more detail in section about cluster management, because Spark's capabilities can be further enhanced by it.
 
-It is possible to have a hot spare master 
-
-Worker nodes launch and monitors job?s executors. When worker fails, all its child process are also gone. Then the worker process is automatically relaunched, processes restarted and tasks reran. When just the Executor process fails, then it is automatically relaunched by the Worker process and any tasks that were in flight are rescheduled. Stream receivers follows the same resiliency characteristics as 
+Worker nodes launch and monitors job's executors. When worker fails, all its child process are also gone. Then the worker process is automatically relaunched, processes restarted and tasks reran. When just the Executor process fails, then it is automatically relaunched by the Worker process and any tasks that were in flight are rescheduled. Stream receivers follows the same resiliency characteristics as 
 executors.
+
+TODO: COMPLETE (parallel recovery)
 
 \begin{figure}[hb]
 	\begin{center}
@@ -155,9 +154,11 @@ executors.
 
 Failure recovery has impact on the performance ... as displayed on figure~\ref{fig:sparkStreamingFailureImpact}.
 
+Fault tolerance of different spark components is discussed in detail later in section about cluster managers.
+
 \subsection{Order}
 Ordering
-Event time processing
+I processing
 
 TODO: COMPLETE
 
@@ -187,7 +188,7 @@ Spark in cooperation with DC/OS provides capabilities to efficiently utilise pro
 TODO: COMPLETE https://docs.google.com/document/d/1jdPtcDyRXWheIQ4MLJpXeK4IoxtUrcThou6LmkUaN28/edit
 The stream processing pipeline scaling is 
 
-\subsection{Cluster and resource management}
+\section{Cluster management and resource scheduler}
 Elasticity
 Dynamic
 Dynamic changes to pipeline
@@ -207,21 +208,92 @@ Some of the questions that need to be resolved with regards to resource manageme
     
 \end{itemize}
 
-\subsubsection{Job submission}
-Spark jobs can be submitted using spark-submit script, programmatically directly from code or using job server which provides more flexibility and simple handling  of many common scenarios.
+Generally we want to utilise available cluster resources as well as possible for Spark jobs and other applications running in the cluster resulting in fault tolerance, performance and also financial savings. 
 
-\subsubsection{Cluster management and resource scheduler}
-Own, YARN, Mesos, Standalone
+\begin{figure}[hb]
+	\begin{center}
+		\caption{Dynamic scaling}
+		\label{fig:dynamicScaling}
+		\includegraphics[width=8cm,keepaspectratio]{comparing-s-h-14.png}
+	\end{center}
+\end{figure}
 
-\subsection{Latency and throughput}
-\subsection{No downtime deployment}
-\subsection{Monitoring, logging, operations}
-\subsection{Serialisation and versioning}
-\subsection{Development tools and visualisation}
+An example of dynamic scaling based on load in Google Cloud Dataflow is on figure~\ref{fig:dynamicScaling} [https://cloud.google.com/blog/big-data/2016/03/comparing-cloud-dataflow-autoscaling-to-spark-and-hadoop]. Ideally we would want to also keep the number of provisioned (physical) machines to minimum, but never under-provision the cluster to be unable to handle current load. Excessive machines would ideally be returned to provider so they don't have to be paid for. If dynamic cluster sizing is not possible, utilisation still should be maximised between Spark and other applications.
+
+Spark currently can use Standalone mode, YARN or Mesos as a cluster manager. The decision which one to use is very important, because it will determine the capabilities of the cluster and also Spark itself. For implementation of this architecture Mesos/Mesosphere DC/OS was chosen. This section will very briefly discuss capabilities of the other options and then focus on DC/OS and the features that were important for this project.
+
+\subsection{Standalone}
+In standalone mode Spark does not rely on any 3rd party cluster manager. Standalone mode provides basic resource scheduling and fault tolerance capabilities. If Spark master crashes, no new application can be created, so it needs a high availability scheme in order to circumvent this. ZooKeeper can be used to provide leader election by launching multiple Spark masters connected to the same ZooKeeper instance. Only one will be elected a leader and the other will remain in standby until the leader is lost. This setup is highly recommended in production scenarios, although it requires a Zookeeper cluster.
+Job fault tolerance is managed by Spark itself - if worker nodes crash, Spark automatically reruns the lost part of the computation graph on a different worker node. If the application runs in cluster mode and exits with non-zero code it can be restarted automatically if desired.
+Additionally local filesystem can be used to allow applications to recover their state from master crashes.
+Spark standalone offers only basic resource management capabilities and scheduling capabilities do not exist at all. By default a FIFO scheduler is used and each job requests and consumes all CPUs available in the cluster. It is not a sufficient solution for multiple user/job scenarios. The only option then is to set up maximum cores for each job using a configuration value. Such solution still does not guarantee efficient utilisation of cluster resources, reactions to changes in load or optimised allocation of resources to each job. The latter can be further improved by empirical evidence, statistics and evolution of the configuration, but it is largely a manual process.
+
+\subsection{YARN}
+YARN is a cluster manager commonly used in the Hadoop ecosystem. It splits up the functionalities of resource management and job scheduling/monitoring into separate daemons and removes the responsibility from Spark itself. It can be used only to manage the resources of the Hadoop/Spark cluster, not the entire datacenter.
+
+YARN can react to failures of both the applications masters and executors. It can run multiple application masters in the same cluster and the each application master will negotiate with the resource master to allocate containers to do the actual work. If some application master crashes the ResourceManager can restart the application master on either the same node or in another node based on the available resources.
+
+Dynamic allocation provides the ability to dynamically increase and decrease the number of executors in the application. By enabling the dynamic allocation, YARN will start by minimum executors defined in the configuration, then when the load of jobs increases, YARN will detect that there are more jobs queued and waiting for executors, so it will increase the number of executors until they become enough for running the jobs or until it reaches the maximum number of executors defined in the configuration. And when the load is decreasing, YARN will start to destroy idle executors until it reaches the minimum number of executors. This provides elastic scaling based on the load of jobs.
+
+The application master can make a very detailed request about the resources of each container and where the containers will run to allow a better resource utilization and data locality. e.g. 1 container with 2 CPU cores and 2 containers with 4G memory and run in the same rack.
+
+\subsection{Mesos and Mesosphere DC/OS}
+Spark is perfectly suited to run on large scale hardware clusters managed by Mesos. Deploying Spark on Mesos allows for dynamic partitioning on available resources and it also ensures that the resource partition can be scaled between multiple hardware hosts. Running compute jobs on Mesos ensure that the available resources are utilized to its maximum potential.
+
+Mesos sits at the heart of DC/OS which is an open-source distributed operating system. It aids in automating resource management, scheduling process placement, facilitating inter-process communication, and simplifying the installation and management of distributed services. Its included web interface and available command-line interface facilitate remote management and monitoring of the cluster and its services.
+
+Deploying Spark on Mesos provides the choice between running on plain Mesos based infrastructure or running using DC/OS. Choosing DC/OS allows for some key benefits like:
+
+\begin{itemize}
+  \item Easy container orchestration
+  \item A cloud-agnostic installer
+  \item Extensive community provided services like Spark, Kafka, Cassandra, etc.
+  \item Zero downtime upgrades to installed service components
+\end{itemize}
+
+Mesos offers Coarse grained and Fine grained modes. Based on the dynamic resource allocation capabilities that the two modes offer, fine-grain mode stands out as the mode that suits better the domain specific use-case given.
+
+TODO: Briefly mention the difference between fine and coarse grained
+
+\subsubsection{Scheduled scaling}
+Allocation of more resources to Spark for a certain time window is possible as part of the infrastructure layer by scaling up and down physical resources by scheduled provisioning on a schedule. Mesos can harvest any additional physical resource made available and allocated to the Spark jobs based on demand. Dynamic allocation of resource will ensure that all available resources can and will be used when needed, in a highly efficient fashion.
+
+\subsubsection{Reactive scaling}
+Mesos can interact with the resource provisioning mechanism to trigger scaling up and down additional resources based on load as well. This sort of mechanisms make Mesos a highly reactive resource manager that can expand the size of the stack on spikes.
+
+\subsubsection{Prioritised resource allocation}
+Spark on Mesos offers fine tuning capabilities that enable resource allocation in a prioritised manner per individual Spark job.
+
+\subsubsection{Highly custom resource allocation}
+Mesos permits custom resource allocation method by implementing own sharing policy, or by tuning the default hierarchical Dominant Resource Fairness algorithm. This kind of fine tuning, although is highly uncommon, it is available as an option.
+
+\subsubsection{Chronos Framework}
+Chronos Framework is by definition the tool that can be used for scheduling the triggers of events in Mesos. Different types of Spark jobs can be triggered by individual Chronos jobs in a customisable manner. Chronos is highly reliable and fault tolerant. Resilience is also achievable when using Chronos as the job scheduler for running the Spark jobs.
+
+\subsubsection{Marathon Framework}
+Marathon Framework, a core, integral service of DC/OS is the long running jobs scheduler in Mesos. Marathon can also be used to act as the scheduler for different Spark jobs types to be triggered within predefined time windows. Resilience is one of the features of Marathon so it comes as standard. Marathon offers a rich API can can be programmatically used, thus having a higher integration potential.
+
+Based on scheduling capabilities and dynamic resource allocation mechanisms that Mesos offers and based on the thorough integration available between Spark with DC/OS, running Spark jobs with the Spark Framework on DC/OS is very likely the most robust solution available out there. Apache Spark being inherently compatible with Apache Mesos, the combination of the two technologies comes with a rich set of features that both resource management and Spark jobs scheduling can leverage in a way that fits both dynamic scaling requirements and dynamic resource allocation.
+
+The options that DC/OS offers for scheduling come with a high level of reliability, having both resilience and fault tolerance checkboxes ticked as standard. Additionally, the Marathon Framework provides a rich API, thus allowing programmatic integration with the scheduler. A fast and simple integration with Chronos scheduler is also an option that can prove to be better fit on time window based scheduling scenarios.
+
+Resource allocation with Spark Framework on Mesos is configurable per individual Spark job. Fine grain or coarse grain Spark jobs on Mesos running modes are selectable per individual job, allowing fine tuning of the Spark jobs, tailored to each job type needs.
 
 \section{Alternatives and competitors}
+A variety of alternative solutions can be used depending on specific requirements, with many different levels of abstraction. From own solutions in a lower level programming language, concurrent and distributed frameworks like Akka or for example reactive streams offering a convenient streaming abstraction. Given the sizes of the data, fault tolerance and other requirements of the project in question, we need to be looking at distributed stream and batch processing solutions. Otherwise the implementation would be time consuming and would require building of a subset of Spark's capabilities. It may still be a reasonable option in certain specific cases, but for this architecture solutions like spark offer all the requirement capabilities.
+
+// TODO: Below references
+
+The distributed stream and batch processing systems market has been growing significantly over last years and with the increasing demand. Apart from Spark, the Apache ecosystem includes Flink, Gearpump, Storm (and Trident), Ignite, Apex and others. Many solutions that are not open source exist. A good example is Google's Cloud Dataflow.
+
+Not always are all the guarantees of these solutions well documented so it might be challenging to evaluate the options and pick the one best suiting the requirements. It is however extremely important to go validate all the required guarantees, otherwise issues such insufficient error handling, availability or integrity issues may be observed. Even worse, many of these issues can only be observed asynchronously or under certain circumstances so although they may have huge impact on the business they may only happen occasionally and may therefore be difficult to track or even notice. A good resources for comparison are for example [TODO: Petr's talk?].
+
+TODO: Discuss event time processing and dynamic scaling or other insufficiencies of Spark
 
 \section{Conclusion}
+Apache Spark and its streaming and batch capabilities provide all the required guarantees for this particular financial processing system. In cooperation with Mesos or DC/OS the desired cluster management and scheduling guarantees can also be met. 
+
+As discussed other options are also available, each with its advantages and disadvantages. If for example the processing or dynamic scalability (TODO: Ref Google dataflow blog about scalability comparison with Spark) are needed, other options may be preferable.
 
 
 \addtolength{\textheight}{-12cm}  % This command serves to balance the column lengths
