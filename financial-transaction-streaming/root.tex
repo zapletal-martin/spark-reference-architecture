@@ -49,7 +49,7 @@ separator symbol =; ,
 \begin{abstract}
 This document describes distributed, large data volume stream processing architecture that was used in a real life production financial transaction processing system. The system receives input data from files at defined times and at the same time continuously ingests data from a streaming integration point, processes and transforms the data as a stream, validates them against known records and finally stores the results.
 
-The document describes architecture, technology choices, explanation of system requirements such as data consistency, integrity, performance, fault tolerance or availability and how the selected technologies and their interoperability fulfil the requirements, focusing on Apache Spark. Finally scenarios where selected technologies and architecture can not be applied due to specific limitations are discussed.
+The document describes architecture, technology choices, explanation of system requirements such as data consistency, integrity, performance, fault tolerance or availability and how the selected technologies and their interoperability fulfil the requirements, focusing on Apache Spark. Cluster and resource management required to fulfil some of the requirements as well as to improve cluster utilisation and achieve financial savings are also thoroughly discussed. Finally scenarios where selected technologies and architecture can not be applied due to specific limitations are discussed.
 \end{abstract}
 
 
@@ -68,7 +68,7 @@ For automated deployment, infrastructure and operations and resource management 
 
 \section{Reference implementation}
 
-The application receives multiple types of inputs. One are files from other financial institution uploaded at defined times to an integration point and containing a set of transactions. The other one is integration with other systems through Apache Kafka. The records are processed, validated against known data stored in Cassandra database, transformed and finally stored in Cassandra and relevant information sent to integration points with other internal systems. In addition generation of reports from the stored result data is required. The application has strict requirements for uptime, availability, consistency, data integrity, scalability and cost optimisation while ideally using OS technologies. For those reasons Mesosphere DSOS was chosen for infrastructure automation, cluster and resource management.
+The application receives multiple types of inputs. One are files from other financial institution uploaded at defined times to an integration point and containing a set of transactions. The other one is integration with other systems through Apache Kafka. The records are processed, validated against known data stored in Cassandra database, transformed and finally stored in Cassandra and relevant information sent to integration points with other internal systems. In addition generation of report sand analytics from the stored result data is required. The application has strict requirements for uptime, availability, consistency, data integrity, scalability and cost optimisation while ideally using OS technologies. For those reasons Mesosphere DSOS was chosen for infrastructure automation, cluster and resource management.
 
 \section{Main components}
 
@@ -101,6 +101,9 @@ After the data are in correct format for processing we can apply the actual busi
 
 \subsubsection{Data storage}
 The processed data are stored in a database solution. Firstly, the business logic records are updated using the previously applied business rules. Secondly, an analytics data store is updated with the new records for advanced analytics and search purposes. 
+
+// TODO: Updates to storage and analytics storage
+// TODO: Direct updates vs via the platform
 
 \subsubsection{Result integration}
 Enterprise systems are often large distributed application consisting of many services, independent applications and modules. Spark is used to provide updates about the real time processing to the interested services by publishing a stream to Apache Kafka. Kafka is then used as streaming data platform for other systems to subscribe to real time updates with Kafka's strong guarantees.
